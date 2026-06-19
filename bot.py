@@ -1,5 +1,6 @@
 import os, tempfile, fitz
 from telegram import Update
+from telegram.request import HTTPXRequest
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, ContextTypes, filters
 
 TOKEN = os.environ["BOT_TOKEN"]
@@ -22,18 +23,22 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not doc or not (doc.file_name or "").lower().endswith(".pdf"):
         await update.message.reply_text("Please send a PDF file.")
         return
-    await update.message.reply_text("Processing your PDF...")
-    with tempfile.TemporaryDirectory() as tmp:
-        in_path = os.path.join(tmp, "input.pdf")
-        out_path = os.path.join(tmp, "output.pdf")
-        tg_file = await doc.get_file()
-        await tg_file.download_to_drive(in_path)
-        rasterize(in_path, out_path)
-        with open(out_path, "rb") as f:
-            await update.message.reply_document(f, filename="rasterized.pdf")
+    try:
+        await update.message.reply_text("Processing your PDF...")
+        with tempfile.TemporaryDirectory() as tmp:
+            in_path = os.path.join(tmp, "input.pdf")
+            out_path = os.path.join(tmp, "output.pdf")
+            tg_file = await doc.get_file()
+            await tg_file.download_to_drive(in_path)
+            rasterize(in_path, out_path)
+            with open(out_path, "rb") as f:
+                await update.message.reply_document(f, filename="rasterized.pdf")
+    except Exception as e:
+        await update.message.reply_text(f"Sorry, something went wrong processing that PDF: {e}")
 
 def main():
-    app = ApplicationBuilder().token(TOKEN).build()
+    request = HTTPXRequest(connect_timeout=30, read_timeout=120, write_timeout=120, pool_timeout=30)
+    app = ApplicationBuilder().token(TOKEN).request(request).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.Document.PDF, handle_pdf))
     app.run_polling()
